@@ -1,7 +1,8 @@
 use std::{vec, os};
+use std::fmt::{Show, Formatter, Result};
 use std::collections::{Deque, RingBuf, TreeSet};
 
-#[deriving(Show, Clone, PartialEq)]
+#[deriving(Clone, PartialEq)]
 enum ResistorTree {
     Resistor(f64),
     Parallel(Vec<ResistorTree>),
@@ -34,6 +35,48 @@ impl ResistorTree {
     }
 }
 
+impl Show for ResistorTree {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        match self {
+            &Resistor(value) => try!(write!(f, "{}Ω", value)),
+
+            &Parallel(ref vec) => {
+                try!(write!(f, "Parallel["));
+
+                let mut first = true;
+                for rt in vec.iter() {
+                    if first {
+                        first = false;
+                    } else {
+                        try!(write!(f, ", "));
+                    }
+                    try!(write!(f, "{}", rt));
+                }
+
+                try!(write!(f, "]"));
+            },
+
+            &Series(ref vec) => {
+                try!(write!(f, "Series["));
+
+                let mut first = true;
+                for rt in vec.iter() {
+                    if first {
+                        first = false;
+                    } else {
+                        try!(write!(f, ", "));
+                    }
+                    try!(write!(f, "{}", rt));
+                }
+
+                try!(write!(f, "]"));
+            }
+        }
+
+        Ok(())
+    }
+}
+
 impl Eq for ResistorTree {}
 
 impl PartialOrd for ResistorTree {
@@ -62,16 +105,18 @@ impl Ord for ResistorTree {
 struct ResistorSearcher<'a> {
     target: f64,
     available: &'a Vec<f64>,
+    threshold: f64,
 
     queue: RingBuf<ResistorTree>,
     explored: TreeSet<ResistorTree>
 }
 
 impl<'a> ResistorSearcher<'a> {
-    pub fn new(target: f64, resistors: &'a Vec<f64>) -> ResistorSearcher<'a> {
+    pub fn new(target: f64, resistors: &'a Vec<f64>, threshold: f64) -> ResistorSearcher<'a> {
         ResistorSearcher {
             target: target,
             available: resistors,
+            threshold: threshold,
 
             queue: RingBuf::new(),
             explored: TreeSet::new()
@@ -79,7 +124,7 @@ impl<'a> ResistorSearcher<'a> {
     }
 
     fn is_goal<'b>(&self, rt: &'b ResistorTree) -> bool{
-        (rt.ohms() - self.target).abs() < 0.1
+        (rt.ohms() - self.target).abs() < self.threshold
     }
 
     fn explore_node<'b>(&mut self, rt: &'b ResistorTree) {
@@ -163,33 +208,80 @@ impl<'a> ResistorSearcher<'a> {
 }
 
 fn print_usage() {
-    println!("Usage: [target resistance] [available resistors]")
+    println!("Usage: [OPTIONS] [available resistors]");
+    println!("Options:");
+    println!("    -r    resistance target");
+    println!("    -t    resistance threshold (optional, default is 0.1)");
+    println!("    -f    frequency target (takes priority over -r)");
+}
+
+fn resistor_search<'a>(target: f64, resistors: &'a Vec<f64>, threshold: f64) -> Option<ResistorTree> {
+    println!("Initialising search for target resistance: {}Ω, threshold {}Ω", target, threshold);
+    println!("");
+
+    match ResistorSearcher::new(target, resistors, threshold).search() {
+        Some(tree) => {
+            println!("Arrangement found with resistance {}Ω: ", tree.ohms());
+            println!("{}", tree);
+
+            Some(tree)
+        },
+
+        None => {
+            println!("No arrangement found!");
+            None
+        }
+    }
 }
 
 fn main() {
     let args = os::args();
 
-    if args.len() < 3 {
-        return print_usage();
-    };
+    let mut target: f64 = -1.0;
+    let mut threshold: f64 = 0.1;
 
-    let target: f64 = match from_str(args[1].as_slice()) {
-        Some(val) => val,
-        None => return print_usage()
-    };
+    let mut i = 1;
+    while i < args.iter().len() {
+        if args[i].as_slice() == "-r" {
+            if i + 1 >= args.iter().len() {
+                return print_usage()
+            }
+
+            target = match from_str(args[i + 1].as_slice()) {
+                Some(val) => val,
+                None => return print_usage()
+            };
+
+            i += 2;
+        } else if args[i].as_slice() == "-t" {
+            if i + 1 >= args.iter().len() {
+                return print_usage()
+            }
+
+            threshold = match from_str(args[i + 1].as_slice()) {
+                Some(val) => val,
+                None => return print_usage()
+            };
+
+            i += 2;
+        } else {
+            break;
+        }
+    }
+
+    if target < 0.0 {
+        return print_usage();
+    }
 
     let mut resistors: Vec<f64> = vec::Vec::new();
 
-    for value in args.tailn(2).iter() {
+    for value in args.tailn(i).iter() {
         match from_str(value.as_slice()) {
             Some(val) => resistors.push(val),
             None => return print_usage()
         };
     };
 
-    match ResistorSearcher::new(target, &resistors).search() {
-        Some(tree) => println!("{}", tree),
-        None => println!("No arrangement found!")
-    }
+    resistor_search(target, &resistors, threshold);
 }
 
