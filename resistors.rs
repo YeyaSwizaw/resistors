@@ -234,11 +234,31 @@ fn resistor_search<'a>(target: f64, resistors: &'a Vec<f64>, threshold: f64) -> 
     }
 }
 
+fn freq_search<'a>(target: f64, resistors: &'a Vec<f64>, threshold: f64) {
+    println!("To achieve a frequency of {}Hz:", target);
+
+    let high = 0.75 / target;
+    let low = 0.25 / target;
+    let r1 = (high - low) / (0.6931 * 0.000047);
+    let r2 = high / (0.6931 * 0.000047);
+
+    println!("R1 = {}Ω", r1);
+    println!("R2 = {}Ω", r2);
+    println!("");
+
+    resistor_search(r1, resistors, threshold);
+    println!("");
+
+    resistor_search(r2, resistors, threshold);
+    println!("");
+}
+
 fn main() {
     let args = os::args();
 
     let mut target: f64 = -1.0;
     let mut threshold: f64 = 0.1;
+    let mut freq: Option<f64> = None;
 
     let mut i = 1;
     while i < args.iter().len() {
@@ -264,13 +284,20 @@ fn main() {
             };
 
             i += 2;
+        } else if args[i].as_slice() == "-f" {
+            if i + 1 >= args.iter().len() {
+                return print_usage()
+            }
+
+            freq = match from_str(args[i + 1].as_slice()) {
+                Some(val) => Some(val),
+                None => return print_usage()
+            };
+
+            i += 2;
         } else {
             break;
         }
-    }
-
-    if target < 0.0 {
-        return print_usage();
     }
 
     let mut resistors: Vec<f64> = vec::Vec::new();
@@ -282,6 +309,22 @@ fn main() {
         };
     };
 
-    resistor_search(target, &resistors, threshold);
+    match freq {
+        None => {
+            if target < 0.0 {
+                return print_usage();
+            } else {
+                resistor_search(target, &resistors, threshold); 
+            }
+        },
+
+        Some(val) => {
+            if val < 0.0 {
+                return print_usage();
+            } else {
+                freq_search(val, &resistors, threshold);
+            }
+        }
+    };
 }
 
